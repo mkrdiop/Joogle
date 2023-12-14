@@ -1,0 +1,122 @@
+import os
+import json
+import PyPDF2
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from datasets import load_dataset
+from tqdm.auto import tqdm
+from rouge import Rouge
+
+# Configure model and tokenizer
+MODEL_NAME = "t5-base"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+
+# Define data path
+
+data_path = 'C:\\Users\\mkrdi\\Documents\\JOOGLE\\general\\data\\'
+
+# Function to read PDF and extract text
+def read_pdf(file_path):
+    pdf_reader = PyPDF2.PdfReader(file_path)
+    page_content = []
+    for page in pdf_reader.pages:
+        page_content.append(page.extract_text())
+    return " ".join(page_content)
+
+# Function to preprocess data
+# Function to preprocess data
+def preprocess_function(file_name):
+    # Modify this line to access the correct summary file
+    summary_file = os.path.join(data_path, file_name + ".txt")
+
+    # Read text from PDF and summary from text file
+    text = read_pdf(os.path.join(data_path, file_name + ".pdf"))
+    with open(summary_file, encoding="utf-8") as f:
+        summary = f.read()
+    
+    # Preprocess text and summary for model
+    inputs = tokenizer(text, truncation=True, padding="max_length", max_length=512)
+    labels = tokenizer(summary, truncation=True, padding="max_length", max_length=128)
+
+    # Create dictionary for dataset
+    data_point = {"text": text, "summary": summary, "input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"], "labels": labels["input_ids"]}
+
+    return data_point
+
+# Define function to evaluate summary
+def evaluate_summary(summary, gold_standard):
+  # Implement your evaluation logic here. This can involve various metrics like ROUGE, BLEU, or custom scoring based on specific requirements.
+  # For example, you could calculate the BLEU score between the summary and the gold standard.
+  rouge = Rouge(metrics=['rouge-n', 'rouge-l'], max_n=4)
+  score = rouge.get_scores(summary, gold_standard)
+  return score
+  
+
+# Define function to summarize text
+def summarize(text):
+    inputs = tokenizer(text, truncation=True, padding="max_length", max_length=512)
+    outputs = model.generate(**inputs)
+    summary = tokenizer.decode(outputs[0])
+    return summary
+
+   
+# Load and prepare data
+
+# Specify the path to your JSON file
+json_file_path = 'train_dataset.json'
+json_file_path2 = 'eval_dataset.json'
+
+# Open the JSON file for reading
+with open(json_file_path, 'r') as f:
+    # Load the JSON data from the file
+    train_dataset = json.load(f)
+    
+with open(json_file_path2, 'r') as f:
+    # Load the JSON data from the file
+    eval_dataset = json.load(f)
+# Train the model
+print('training the model')
+from transformers import TrainingArguments
+from sklearn.model_selection import train_test_split
+
+training_args = TrainingArguments(
+    output_dir="./results",
+    overwrite_output_dir=True,
+    num_train_epochs=3,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    warmup_steps=500,
+    weight_decay=0.01,
+    logging_steps=100,
+    evaluation_strategy="epoch",
+    load_best_model_at_end=True,
+)
+
+# Train the model
+from transformers import Trainer
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset = eval_dataset,
+)
+
+trainer.train()
+# Save the model and tokenizer
+output_model_path = "./summarization_model"
+
+# Save the model
+print('Saving the model')
+model.save_pretrained(output_model_path)
+
+# Save the tokenizer
+print('Saving the tokenizer')
+tokenizer.save_pretrained(output_model_path)
+
+# Define function to summarize text
+def summarize(text):
+    inputs = tokenizer(text, truncation=True, padding="max_length", max_length=512)
+    outputs = model.generate(**inputs)
+    summary = tokenizer.decode(outputs[0])
+    return summary
